@@ -1,6 +1,7 @@
 package com.example.whatappclone.data.webrtc
 
 import android.content.Context
+import android.util.Log
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
@@ -9,17 +10,23 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import org.webrtc.*
+import org.webrtc.audio.JavaAudioDeviceModule
 
 /**
  * WebRTC Manager for real peer-to-peer video/audio calling
  */
 class WebRTCManager(private val context: Context) {
     
+    companion object {
+        private const val TAG = "WebRTCManager"
+    }
+    
     private var peerConnectionFactory: PeerConnectionFactory? = null
     private var peerConnection: PeerConnection? = null
     private var localVideoTrack: VideoTrack? = null
     private var localAudioTrack: AudioTrack? = null
     private var videoCapturer: CameraVideoCapturer? = null
+    private var audioDeviceModule: JavaAudioDeviceModule? = null  // 🎯 Keep reference to audio device module
     
     private val database = FirebaseDatabase.getInstance()
     private var currentCallId: String? = null
@@ -37,11 +44,14 @@ class WebRTCManager(private val context: Context) {
      * Initialize WebRTC
      */
     fun initialize() {
+        Log.d(TAG, "Initializing WebRTC...")
         val options = PeerConnectionFactory.InitializationOptions.builder(context)
-            .setEnableInternalTracer(true)
+            .setEnableInternalTracer(false)
+            .setFieldTrials("")
             .createInitializationOptions()
         
         PeerConnectionFactory.initialize(options)
+        Log.d(TAG, "PeerConnectionFactory initialized")
         
         val encoderFactory = DefaultVideoEncoderFactory(
             EglBase.create().eglBaseContext,
@@ -51,11 +61,53 @@ class WebRTCManager(private val context: Context) {
         
         val decoderFactory = DefaultVideoDecoderFactory(EglBase.create().eglBaseContext)
         
+        val factoryOptions = PeerConnectionFactory.Options().apply {
+            networkIgnoreMask = 0
+        }
+        
+        // 🎯 IMPROVED: Properly configured audio device module for clear voice
+        audioDeviceModule = JavaAudioDeviceModule.builder(context)
+            .setUseHardwareAcousticEchoCanceler(true)
+            .setUseHardwareNoiseSuppressor(true)
+            .setAudioRecordErrorCallback(object : JavaAudioDeviceModule.AudioRecordErrorCallback {
+                override fun onWebRtcAudioRecordInitError(errorMessage: String?) {
+                    Log.e(TAG, "Audio Record Init Error: $errorMessage")
+                }
+                override fun onWebRtcAudioRecordStartError(
+                    errorCode: JavaAudioDeviceModule.AudioRecordStartErrorCode?,
+                    errorMessage: String?
+                ) {
+                    Log.e(TAG, "Audio Record Start Error: $errorMessage")
+                }
+                override fun onWebRtcAudioRecordError(errorMessage: String?) {
+                    Log.e(TAG, "Audio Record Error: $errorMessage")
+                }
+            })
+            .setAudioTrackErrorCallback(object : JavaAudioDeviceModule.AudioTrackErrorCallback {
+                override fun onWebRtcAudioTrackInitError(errorMessage: String?) {
+                    Log.e(TAG, "Audio Track Init Error: $errorMessage")
+                }
+                override fun onWebRtcAudioTrackStartError(
+                    errorCode: JavaAudioDeviceModule.AudioTrackStartErrorCode?,
+                    errorMessage: String?
+                ) {
+                    Log.e(TAG, "Audio Track Start Error: $errorMessage")
+                }
+                override fun onWebRtcAudioTrackError(errorMessage: String?) {
+                    Log.e(TAG, "Audio Track Error: $errorMessage")
+                }
+            })
+            .createAudioDeviceModule()
+        
         peerConnectionFactory = PeerConnectionFactory.builder()
+            .setAudioDeviceModule(audioDeviceModule)
             .setVideoEncoderFactory(encoderFactory)
             .setVideoDecoderFactory(decoderFactory)
-            .setOptions(PeerConnectionFactory.Options())
+            .setOptions(factoryOptions)
             .createPeerConnectionFactory()
+        
+        // 🎯 DON'T release audio device module immediately - it needs to stay alive for the duration of calls!
+        Log.d(TAG, "WebRTC initialization complete with audio device module active!")
     }
     
     /**
@@ -67,6 +119,7 @@ class WebRTCManager(private val context: Context) {
         onIceCandidate: (IceCandidate) -> Unit,
         onAddStream: (MediaStream) -> Unit
     ): PeerConnection? {
+        Log.d(TAG, "Creating peer connection for call: $callId, isVideo: $isVideoCall")
         currentCallId = callId
         
         val rtcConfig = PeerConnection.RTCConfiguration(iceServers).apply {
@@ -76,32 +129,87 @@ class WebRTCManager(private val context: Context) {
         
         val observer = object : PeerConnection.Observer {
             override fun onIceCandidate(iceCandidate: IceCandidate?) {
+                Log.d(TAG, "ICE Candidate generated: ${iceCandidate?.sdp}")
                 iceCandidate?.let { onIceCandidate(it) }
             }
             
             override fun onAddStream(mediaStream: MediaStream?) {
-                mediaStream?.let { onAddStream(it) }
+                Log.d(TAG, "Remote stream added: ${mediaStream?.id}")
+                mediaStream?.let { 
+                    Log.d(TAG, "Remote stream has ${it.audioTracks?.size ?: 0} audio tracks and ${it.videoTracks?.size ?: 0} video tracks")
+                    
+                    // Enable all audio tracks in the remote stream
+                    it.audioTracks?.forEach { audioTrack ->
+                        audioTrack.setEnabled(true)
+                        Log.d(TAG, "Remote audio track enabled: ${audioTrack.id()}, state: ${audioTrack.state()}")
+                    }
+                    // Enable all video tracks in the remote stream
+                    it.videoTracks?.forEach { videoTrack ->
+                        videoTrack.setEnabled(true)
+                        Log.d(TAG, "Remote video track enabled: ${videoTrack.id()}")
+                    }
+                    onAddStream(it)
+                }
             }
             
-            override fun onSignalingChange(signalingState: PeerConnection.SignalingState?) {}
-            override fun onIceConnectionChange(iceConnectionState: PeerConnection.IceConnectionState?) {}
+            override fun onSignalingChange(signalingState: PeerConnection.SignalingState?) {
+                Log.d(TAG, "Signaling state changed: $signalingState")
+            }
+            
+            override fun onIceConnectionChange(iceConnectionState: PeerConnection.IceConnectionState?) {
+                Log.d(TAG, "ICE Connection state changed: $iceConnectionState")
+            }
+            
             override fun onIceConnectionReceivingChange(b: Boolean) {}
-            override fun onIceGatheringChange(iceGatheringState: PeerConnection.IceGatheringState?) {}
+            override fun onIceGatheringChange(iceGatheringState: PeerConnection.IceGatheringState?) {
+                Log.d(TAG, "ICE Gathering state changed: $iceGatheringState")
+            }
             override fun onIceCandidatesRemoved(iceCandidates: Array<out IceCandidate>?) {}
-            override fun onRemoveStream(mediaStream: MediaStream?) {}
+            override fun onRemoveStream(mediaStream: MediaStream?) {
+                Log.d(TAG, "Remote stream removed")
+            }
             override fun onDataChannel(dataChannel: DataChannel?) {}
-            override fun onRenegotiationNeeded() {}
-            override fun onAddTrack(rtpReceiver: RtpReceiver?, mediaStreams: Array<out MediaStream>?) {}
+            override fun onRenegotiationNeeded() {
+                Log.d(TAG, "Renegotiation needed")
+            }
+            override fun onAddTrack(rtpReceiver: RtpReceiver?, mediaStreams: Array<out MediaStream>?) {
+                Log.d(TAG, "Track added: ${mediaStreams?.size} streams")
+                // Enable the received track
+                val track = rtpReceiver?.track()
+                track?.setEnabled(true)
+                Log.d(TAG, "Received track enabled: ${track?.id()}, kind: ${track?.kind()}")
+                
+                // Also enable all tracks in the media streams
+                mediaStreams?.forEach { stream ->
+                    stream.audioTracks?.forEach { audioTrack ->
+                        audioTrack.setEnabled(true)
+                        Log.d(TAG, "Stream audio track enabled: ${audioTrack.id()}")
+                    }
+                    onAddStream(stream)
+                }
+            }
         }
         
         peerConnection = peerConnectionFactory?.createPeerConnection(rtcConfig, observer)
+        Log.d(TAG, "PeerConnection created: ${peerConnection != null}")
         
         // Add local tracks
         if (isVideoCall) {
+            Log.d(TAG, "Adding video track...")
             addVideoTrack()
+            localVideoTrack?.let {
+                peerConnection?.addTrack(it, listOf("local_stream"))
+                Log.d(TAG, "Video track added to peer connection")
+            }
         }
+        Log.d(TAG, "Adding audio track...")
         addAudioTrack()
+        localAudioTrack?.let {
+            peerConnection?.addTrack(it, listOf("local_stream"))
+            Log.d(TAG, "Audio track added to peer connection")
+        }
         
+        Log.d(TAG, "PeerConnection ready with local tracks")
         return peerConnection
     }
     
@@ -109,6 +217,7 @@ class WebRTCManager(private val context: Context) {
      * Add video track (camera)
      */
     private fun addVideoTrack() {
+        Log.d(TAG, "Creating video track...")
         val videoSource = peerConnectionFactory?.createVideoSource(false)
         localVideoTrack = peerConnectionFactory?.createVideoTrack("video_track", videoSource)
         
@@ -120,6 +229,8 @@ class WebRTCManager(private val context: Context) {
         val frontCamera = deviceNames.find { 
             camera2Enumerator.isFrontFacing(it) 
         } ?: deviceNames.firstOrNull()
+        
+        Log.d(TAG, "Using camera: $frontCamera")
         
         frontCamera?.let { cameraName ->
             videoCapturer = camera2Enumerator.createCapturer(cameraName, null) as? CameraVideoCapturer
@@ -134,17 +245,17 @@ class WebRTCManager(private val context: Context) {
             }
         }
         
-        val localStream = peerConnectionFactory?.createLocalMediaStream("local_stream")
-        localVideoTrack?.let { localStream?.addTrack(it) }
-        localAudioTrack?.let { localStream?.addTrack(it) }
+        // Enable the video track
+        localVideoTrack?.setEnabled(true)
         
-        localStream?.let { peerConnection?.addStream(it) }
+        Log.d(TAG, "Video track created: ${localVideoTrack?.id()}, enabled: ${localVideoTrack?.enabled()}")
     }
     
     /**
      * Add audio track (microphone)
      */
     private fun addAudioTrack() {
+        Log.d(TAG, "Creating audio track...")
         val audioConstraints = MediaConstraints().apply {
             mandatory.add(MediaConstraints.KeyValuePair("googEchoCancellation", "true"))
             mandatory.add(MediaConstraints.KeyValuePair("googAutoGainControl", "true"))
@@ -154,6 +265,11 @@ class WebRTCManager(private val context: Context) {
         
         val audioSource = peerConnectionFactory?.createAudioSource(audioConstraints)
         localAudioTrack = peerConnectionFactory?.createAudioTrack("audio_track", audioSource)
+        
+        // Enable the audio track
+        localAudioTrack?.setEnabled(true)
+        
+        Log.d(TAG, "Audio track created: ${localAudioTrack?.id()}, enabled: ${localAudioTrack?.enabled()}")
     }
     
     /**
@@ -235,9 +351,7 @@ class WebRTCManager(private val context: Context) {
         }, sessionDescription)
     }
     
-    /**
-     * Set remote answer (caller)
-     */
+   
     fun setRemoteAnswer(answer: String) {
         val sessionDescription = SessionDescription(SessionDescription.Type.ANSWER, answer)
         peerConnection?.setRemoteDescription(object : SdpObserver {
@@ -307,8 +421,11 @@ class WebRTCManager(private val context: Context) {
      */
     fun dispose() {
         close()
+        audioDeviceModule?.release()  // 🎯 Release audio device module when disposing
+        audioDeviceModule = null
         peerConnectionFactory?.dispose()
         peerConnectionFactory = null
+        Log.d(TAG, "WebRTC disposed and cleaned up")
     }
 }
 

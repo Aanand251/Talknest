@@ -41,7 +41,13 @@ object DownloadUtil {
         val collection = when (type) {
             MessageType.IMAGE -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI
             MessageType.VIDEO -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-            else -> MediaStore.Downloads.EXTERNAL_CONTENT_URI
+            else -> {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI
+                } else {
+                    MediaStore.Files.getContentUri("external")
+                }
+            }
         }
         
         val contentValues = ContentValues().apply {

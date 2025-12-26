@@ -22,7 +22,7 @@ sealed class Screen(val route: String) {
     object FriendsList : Screen("friends_list")
     object ProfileQR : Screen("profile_qr")
     object QRScanner : Screen("qr_scanner")
-    object Call : Screen("call/{callId}") {
-        fun createRoute(callId: String) = "call/$callId"
+    object Call : Screen("call/{callId}/{isIncoming}") {
+        fun createRoute(callId: String, isIncoming: Boolean = false) = "call/$callId/$isIncoming"
     }
 }

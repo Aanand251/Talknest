@@ -15,11 +15,13 @@ import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -296,6 +298,7 @@ class ImprovedCallRepository(private val context: Context) {
     
     /**
      * Listen for incoming calls - using Firestore (no Realtime DB permission needed)
+     * Only listens for NEW calls (within last 30 seconds)
      */
     fun listenForIncomingCalls(): Flow<Call?> = callbackFlow {
         val currentUserId = auth.currentUser?.uid ?: run {
@@ -303,7 +306,10 @@ class ImprovedCallRepository(private val context: Context) {
             return@callbackFlow
         }
         
-        Log.d(TAG, "Listening for incoming calls (Firestore)")
+        // Track processed calls to avoid duplicates
+        val processedCalls = mutableSetOf<String>()
+        
+        Log.d(TAG, "Listening for incoming calls (Firestore) for user: $currentUserId")
         
         val listener = firestore.collection("calls")
             .whereEqualTo("receiverId", currentUserId)
@@ -314,14 +320,45 @@ class ImprovedCallRepository(private val context: Context) {
                     return@addSnapshotListener
                 }
                 
-                snapshot?.documents?.firstOrNull()?.let { doc ->
-                    val call = Call.fromMap(doc.data ?: return@let)
-                    Log.d(TAG, "Incoming call detected: ${call.callId}")
-                    trySend(call)
+                if (snapshot != null && !snapshot.isEmpty) {
+                    val currentTime = System.currentTimeMillis()
+                    
+                    // Filter only NEW calls (within last 30 seconds)
+                    val newCalls = snapshot.documents.mapNotNull { doc ->
+                        val call = Call.fromMap(doc.data ?: return@mapNotNull null)
+                        val callAge = currentTime - call.timestamp
+                        
+                        // Only process if:
+                        // 1. Call is less than 30 seconds old
+                        // 2. Not already processed
+                        if (callAge < CALL_TIMEOUT_MS && !processedCalls.contains(call.callId)) {
+                            call
+                        } else {
+                            if (callAge >= CALL_TIMEOUT_MS) {
+                                Log.d(TAG, "Ignoring old call: ${call.callId}, age: ${callAge}ms")
+                                // Auto-mark old ringing calls as missed (in background)
+                                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                                    updateCallStatus(call.callId, CallStatus.MISSED)
+                                }
+                            }
+                            null
+                        }
+                    }
+                    
+                    // Get the most recent new call
+                    newCalls.maxByOrNull { it.timestamp }?.let { call ->
+                        Log.d(TAG, "New incoming call detected: ${call.callId} from ${call.callerName}")
+                        processedCalls.add(call.callId)
+                        trySend(call)
+                    }
+                } else {
+                    Log.d(TAG, "No incoming calls")
                 }
             }
         
         awaitClose {
+            Log.d(TAG, "Stopped listening for incoming calls")
+            processedCalls.clear()
             listener.remove()
         }
     }

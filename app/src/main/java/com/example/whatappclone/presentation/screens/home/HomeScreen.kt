@@ -15,6 +15,7 @@ import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -71,11 +72,14 @@ fun HomeScreen(
             chatViewModel.loadChats(it)
             statusViewModel.loadStatuses()
         }
-        
-        // Listen for incoming calls and start CallService
+    }
+    
+    // Listen for incoming calls in separate effect
+    LaunchedEffect(Unit) {
         val callRepository = com.example.whatappclone.data.repository.ImprovedCallRepository(context)
         callRepository.listenForIncomingCalls().collect { call ->
             call?.let {
+                android.util.Log.d("HomeScreen", "Incoming call detected in HomeScreen: ${it.callId}")
                 // Start CallService to show notification with ringtone
                 com.example.whatappclone.service.CallService.startIncomingCall(context, it)
             }
@@ -86,65 +90,65 @@ fun HomeScreen(
     var showSearch by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { 
-                    if (showSearch) {
-                        OutlinedTextField(
-                            value = searchQuery,
-                            onValueChange = { searchQuery = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            placeholder = { Text("Search chats...", color = Color.White.copy(0.7f)) },
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Color.White,
-                                unfocusedBorderColor = Color.White.copy(0.5f),
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White
-                            ),
-                            singleLine = true
-                        )
-                    } else {
-                        Text(
-                            "TalkNest",
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent
-                ),
-                modifier = Modifier.background(
-                    Brush.horizontalGradient(
-                        colors = listOf(PrimaryPurple, PrimaryIndigo, PrimaryBlue)
-                    )
-                ),
-                actions = {
-                    IconButton(onClick = { 
-                        showSearch = !showSearch
-                        if (!showSearch) searchQuery = ""
-                    }) {
-                        Icon(
-                            if (showSearch) Icons.Default.Close else Icons.Default.Search,
-                            contentDescription = "Search",
-                            tint = Color.White
-                        )
-                    }
-                    IconButton(onClick = { navController.navigate(Screen.Settings.route) }) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings", tint = Color.White)
-                    }
-                    Box {
-                        IconButton(onClick = { showMenu = !showMenu }) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "More", tint = Color.White)
+    // 🌈 Beautiful gradient background
+    GradientBackground(
+        gradient = GlassColors.AuroraGradient
+    ) {
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                TopAppBar(
+                    title = { 
+                        if (showSearch) {
+                            OutlinedTextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                placeholder = { Text("Search chats...", color = Color.White.copy(0.7f)) },
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = Color.White,
+                                    unfocusedBorderColor = Color.White.copy(0.5f),
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White
+                                ),
+                                singleLine = true
+                            )
+                        } else {
+                            Text(
+                                "TalkNest",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
-                        DropdownMenu(
-                            expanded = showMenu,
-                            onDismissRequest = { showMenu = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("My QR Code") },
-                                onClick = {
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent
+                    ),
+                    actions = {
+                        IconButton(onClick = { 
+                            showSearch = !showSearch
+                            if (!showSearch) searchQuery = ""
+                        }) {
+                            Icon(
+                                if (showSearch) Icons.Default.Close else Icons.Default.Search,
+                                contentDescription = "Search",
+                                tint = Color.White
+                            )
+                        }
+                        IconButton(onClick = { navController.navigate(Screen.Settings.route) }) {
+                            Icon(Icons.Default.Settings, contentDescription = "Settings", tint = Color.White)
+                        }
+                        Box {
+                            IconButton(onClick = { showMenu = !showMenu }) {
+                                Icon(Icons.Default.MoreVert, contentDescription = "More", tint = Color.White)
+                            }
+                            DropdownMenu(
+                                expanded = showMenu,
+                                onDismissRequest = { showMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("My QR Code") },
+                                    onClick = {
                                     navController.navigate(Screen.ProfileQR.route)
                                     showMenu = false
                                 },
@@ -196,28 +200,28 @@ fun HomeScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = {
-                    // Navigate based on current tab
-                    when (pagerState.currentPage) {
-                        0 -> {
-                            // Navigate to user selection for new chat
-                            chatViewModel.loadAllUsers()
-                            // Show user selection dialog or screen
+            // 💎 Glass FAB with pulsating effect
+            PulsatingEffect(durationMillis = 1500) {
+                FloatingActionButton(
+                    onClick = {
+                        when (pagerState.currentPage) {
+                            0 -> {
+                                chatViewModel.loadAllUsers()
+                            }
+                            1 -> {
+                                showStatusOptions = true
+                            }
                         }
-                        1 -> {
-                            // Show status posting options
-                            showStatusOptions = true
-                        }
-                    }
-                },
-                containerColor = MaterialTheme.colorScheme.secondary
-            ) {
-                Icon(
-                    imageVector = if (pagerState.currentPage == 0) Icons.AutoMirrored.Filled.Message else Icons.Default.CameraAlt,
-                    contentDescription = "Add",
-                    tint = Color.White
-                )
+                    },
+                    containerColor = CrystalPurple.copy(alpha = 0.9f),
+                    contentColor = Color.White
+                ) {
+                    Icon(
+                        imageVector = if (pagerState.currentPage == 0) Icons.AutoMirrored.Filled.Message else Icons.Default.CameraAlt,
+                        contentDescription = "Add",
+                        tint = Color.White
+                    )
+                }
             }
         }
     ) { paddingValues ->
@@ -226,25 +230,27 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Tabs
+            // 💎 Glass Tabs
             TabRow(
                 selectedTabIndex = pagerState.currentPage,
-                containerColor = WhatsAppTeal,
-                contentColor = Color.White
+                containerColor = Color.Transparent,
+                contentColor = Color.White,
+                divider = {},
+                indicator = {}
             ) {
                 Tab(
                     selected = pagerState.currentPage == 0,
                     onClick = {
                         scope.launch { pagerState.animateScrollToPage(0) }
                     },
-                    text = { Text("CHATS") }
+                    text = { Text("CHATS", fontWeight = FontWeight.Bold) }
                 )
                 Tab(
                     selected = pagerState.currentPage == 1,
                     onClick = {
                         scope.launch { pagerState.animateScrollToPage(1) }
                     },
-                    text = { Text("STATUS") }
+                    text = { Text("STATUS", fontWeight = FontWeight.Bold) }
                 )
                 Tab(
                     selected = pagerState.currentPage == 2,
@@ -275,48 +281,77 @@ fun HomeScreen(
             }
         }
         
-        // Status posting dialog
+        // 💎 Glass Status posting dialog
         if (showStatusOptions) {
             AlertDialog(
                 onDismissRequest = { showStatusOptions = false },
-                title = { Text("Post Status") },
+                title = { 
+                    Text(
+                        "Post Status",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
                 text = {
                     Column {
-                        Text("Choose media type:")
+                        Text(
+                            "Choose media type:",
+                            color = Color.White.copy(alpha = 0.7f)
+                        )
                         Spacer(modifier = Modifier.height(16.dp))
-                        Button(
+                        GlassCard(
+                            modifier = Modifier.fillMaxWidth(),
                             onClick = {
                                 statusImagePickerLauncher.launch("image/*")
                                 showStatusOptions = false
                             },
-                            modifier = Modifier.fillMaxWidth()
+                            gradient = GlassColors.OceanGradient
                         ) {
-                            Icon(Icons.Default.Image, "Image")
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Photo")
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Image, "Image", tint = Color.White)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Photo", color = Color.White, fontWeight = FontWeight.Medium)
+                            }
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Button(
+                        Spacer(modifier = Modifier.height(12.dp))
+                        GlassCard(
+                            modifier = Modifier.fillMaxWidth(),
                             onClick = {
                                 statusVideoPickerLauncher.launch("video/*")
                                 showStatusOptions = false
                             },
-                            modifier = Modifier.fillMaxWidth()
+                            gradient = GlassColors.SunsetGradient
                         ) {
-                            Icon(Icons.Default.Videocam, "Video")
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Video")
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Videocam, "Video", tint = Color.White)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Video", color = Color.White, fontWeight = FontWeight.Medium)
+                            }
                         }
                     }
                 },
                 confirmButton = {
-                    TextButton(onClick = { showStatusOptions = false }) {
-                        Text("Cancel")
+                    TextButton(
+                        onClick = { showStatusOptions = false }
+                    ) {
+                        Text("Cancel", color = Color.White)
                     }
-                }
+                },
+                containerColor = Color(0xFF1A1F2E).copy(alpha = 0.95f)
             )
         }
     }
+}
 }
 
 @Composable

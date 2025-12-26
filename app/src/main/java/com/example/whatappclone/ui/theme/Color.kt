@@ -2,9 +2,16 @@ package com.example.whatappclone.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// 🎨 MODERN TALKNEST THEME - Futuristic Gradient Colors
+// 🎨 CRYSTALLIC GLASS THEME - Premium Glassy Colors
 
-// Primary Gradient (Purple to Blue)
+// Primary Glass Gradients
+val CrystalPurple = Color(0xFF667EEA) // Crystal Purple
+val CrystalBlue = Color(0xFF764BA2) // Crystal Blue
+val GlowPurple = Color(0xFF4158D0) // Glowing Purple
+val GlowPink = Color(0xFFC850C0) // Glowing Pink
+val GlowGold = Color(0xFFFFCC70) // Glowing Gold
+
+// New color aliases for compatibility
 val PrimaryPurple = Color(0xFF7C3AED) // Vibrant Purple
 val PrimaryBlue = Color(0xFF3B82F6) // Electric Blue
 val PrimaryIndigo = Color(0xFF6366F1) // Indigo
@@ -21,46 +28,71 @@ val AccentTeal = Color(0xFF14B8A6) // Teal
 val AccentEmerald = Color(0xFF10B981) // Emerald
 val AccentLime = Color(0xFF84CC16) // Lime
 
-// Background - Glassmorphism
-val BackgroundLight = Color(0xFFF8FAFC) // Slate 50
-val BackgroundDark = Color(0xFF0F172A) // Slate 900
+// WhatsApp Glass Style
+val WhatsAppGlass = Color(0x8025D366) // Transparent green
+val WhatsAppGlassDark = Color(0x6000BFA5) // Dark transparent teal
+
+// Ocean Glass Gradients
+val OceanBlue = Color(0xFF667EEA)
+val OceanTeal = Color(0xFF4ECDC4)
+val OceanGreen = Color(0xFF44A08D)
+
+// Sunset Glass
+val SunsetRed = Color(0xFFFF6B6B)
+val SunsetYellow = Color(0xFFFFE66D)
+val SunsetTeal = Color(0xFF4ECDC4)
+
+// Neon Glow
+val NeonGreen = Color(0xFF00F5A0)
+val NeonCyan = Color(0xFF00D9F5)
+
+// Aurora Glass
+val AuroraMint = Color(0xFFA8EDEA)
+val AuroraPink = Color(0xFFFED6E3)
+
+// Background - Glassmorphism with depth
+val BackgroundLight = Color(0xFFF8FAFC) // Light slate
+val BackgroundDark = Color(0xFF0A0E1A) // Deep dark blue
 val SurfaceLight = Color(0xFFFFFFFF)
-val SurfaceDark = Color(0xFF1E293B) // Slate 800
+val SurfaceDark = Color(0xFF1A1F2E) // Dark surface with blue tint
 
-// Glass Effect
-val GlassWhite = Color(0xCCFFFFFF) // 80% opacity white
-val GlassDark = Color(0xCC1E293B) // 80% opacity dark
+// Glass Surface Colors
+val GlassLight = Color(0x1AFFFFFF) // 10% white for light theme
+val GlassDark = Color(0x1AFFFFFF) // 10% white for dark theme
+val GlassBorder = Color(0x40FFFFFF) // 25% white for borders
 
-// Chat Bubbles - Modern Gradient Style
-val ChatBubbleSent = PrimaryPurple // Sent messages = Purple gradient
-val ChatBubbleSentGradient = PrimaryBlue
-val ChatBubbleReceived = Color(0xFFF1F5F9) // Slate 100 for light theme
-val ChatBubbleReceivedDark = Color(0xFF334155) // Slate 700 for dark theme
-val ChatBubbleSentDark = Color(0xFF005C4B)
+// Chat Bubbles - Glass Style
+val ChatBubbleSent = CrystalPurple // Sent messages = Crystal Purple
+val ChatBubbleSentGradient = CrystalBlue
+val ChatBubbleReceived = Color(0xFFF1F5F9) // Light slate
+val ChatBubbleReceivedDark = Color(0xFF252A3A) // Dark with glass effect
+val ChatBubbleSentDark = Color(0xFF1A472A) // Dark green glass
+val ChatBubbleGlass = Color(0x20FFFFFF) // Glass overlay
 
-// Text Colors
-val TextPrimary = Color(0xFF0F172A) // Slate 900
-val TextSecondary = Color(0xFF64748B) // Slate 500
-val TextTertiary = Color(0xFF94A3B8) // Slate 400
-val TextPrimaryDark = Color(0xFFE9EDEF)
-val TextSecondaryDark = Color(0xFF8696A0)
+// Text Colors - High contrast for glass
+val TextPrimary = Color(0xFF0F172A) // Dark slate
+val TextSecondary = Color(0xFF64748B) // Medium slate
+val TextTertiary = Color(0xFF94A3B8) // Light slate
+val TextPrimaryDark = Color(0xFFFFFFFF) // Pure white for dark
+val TextSecondaryDark = Color(0xFFB0B8C0) // Light gray for dark
 
-// Status Colors
-val OnlineIndicator = Color(0xFF10B981) // Emerald 500
-val OfflineGray = Color(0xFF94A3B8) // Slate 400
-val TypingBlue = PrimaryBlue
-val ErrorColor = Color(0xFFD32F2F)
+// Status Colors with glow
+val OnlineIndicator = NeonGreen // Glowing green
+val OfflineGray = Color(0xFF94A3B8)
+val TypingIndicator = NeonCyan // Glowing cyan
+
+// Legacy WhatsApp colors (for compatibility)
+val WhatsAppGreen = Color(0xFF25D366)
+val WhatsAppTeal = Color(0xFF00BFA5)
+val WhatsAppBlue = Color(0xFF34B7F1)
+val ErrorColor = Color(0xFFEF4444)
 
 // Special Effects
 val ShimmerLight = Color(0xFFE2E8F0) // Slate 200
 val ShimmerDark = Color(0xFF334155) // Slate 700
 
-// Dividers
-val DividerColor = Color(0xFFE0E0E0)
-val DividerColorDark = Color(0xFF2A3942)
+// Dividers with glass effect
+val DividerColor = Color(0x20000000) // Subtle divider
+val DividerColorDark = Color(0x20FFFFFF) // Glass divider
 
-// Old WhatsApp colors (keeping for backward compatibility)
-val WhatsAppGreen = PrimaryPurple // Redirect to new purple
-val WhatsAppTeal = PrimaryIndigo // Redirect to new indigo
 val WhatsAppLightGreen = ChatBubbleSent
-val WhatsAppBlue = PrimaryBlue

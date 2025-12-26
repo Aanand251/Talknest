@@ -1,5 +1,6 @@
 package com.example.whatappclone.presentation.screens.call
 
+import android.Manifest
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -22,15 +23,34 @@ import coil.compose.AsyncImage
 import com.example.whatappclone.data.model.CallStatus
 import com.example.whatappclone.data.model.CallType
 import com.example.whatappclone.ui.theme.*
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun CallScreen(
     navController: NavController,
     callId: String,
+    isIncoming: Boolean = false,
     viewModel: CallViewModel = viewModel()
 ) {
+    // Request microphone and camera permissions
+    val permissionsState = rememberMultiplePermissionsState(
+        permissions = listOf(
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.CAMERA
+        )
+    )
+    
+    // Request permissions on first composition
+    LaunchedEffect(Unit) {
+        if (!permissionsState.allPermissionsGranted) {
+            permissionsState.launchMultiplePermissionRequest()
+        }
+    }
+    
     val callState by viewModel.callState.collectAsState()
     val isMuted by viewModel.isMuted.collectAsState()
     val isSpeakerOn by viewModel.isSpeakerOn.collectAsState()
@@ -40,9 +60,29 @@ fun CallScreen(
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
     
-    // Determine if this is caller or receiver
-    val isCaller = callState?.callerId == com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+    // Determine if this is caller or receiver - use isIncoming parameter
+    val isCaller = !isIncoming
     val isVideoCall = callState?.callType == CallType.VIDEO
+    
+    // Show permission dialog if not granted
+    if (!permissionsState.allPermissionsGranted) {
+        AlertDialog(
+            onDismissRequest = { navController.popBackStack() },
+            title = { Text("Permissions Required") },
+            text = { Text("Microphone and Camera permissions are required for calling.") },
+            confirmButton = {
+                Button(onClick = { permissionsState.launchMultiplePermissionRequest() }) {
+                    Text("Grant Permissions")
+                }
+            },
+            dismissButton = {
+                Button(onClick = { navController.popBackStack() }) {
+                    Text("Cancel")
+                }
+            }
+        )
+        return
+    }
     
     LaunchedEffect(callId) {
         // First load the call to get its details

@@ -45,59 +45,62 @@ fun SettingsScreen(
     var showEditDialog by remember { mutableStateOf(false) }
     var showLogoutDialog by remember { mutableStateOf(false) }
     
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { 
-                    Text(
-                        "Settings",
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(
-                            Icons.Default.ArrowBack, 
-                            contentDescription = "Back",
-                            tint = Color.White
+    // 💎 Glass Background with Sunset gradient
+    GradientBackground(gradient = GlassColors.SunsetGradient) {
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                TopAppBar(
+                    title = { 
+                        Text(
+                            "Settings",
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
                         )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = PrimaryPurple
-                )
-            )
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            BackgroundLight,
-                            Color.White
-                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(
+                                Icons.Default.ArrowBack, 
+                                contentDescription = "Back",
+                                tint = Color.White
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent
                     )
-                )
-                .verticalScroll(rememberScrollState())
-        ) {
-            // Profile Section
-            currentUser?.let { user ->
-                ProfileSection(
-                    user = user,
-                    onEditClick = { showEditDialog = true }
                 )
             }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            // Settings Categories
-            SettingsSection(
-                title = "Account",
-                items = listOf(
+        ) { padding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp)
+            ) {
+                // 💎 Glass Profile Section
+                currentUser?.let { user ->
+                    ScaleInAnimation(visible = true, durationMillis = 600) {
+                        GlassCard(
+                            modifier = Modifier.fillMaxWidth(),
+                            gradient = GlassColors.CrystalGradient
+                        ) {
+                            ProfileSection(
+                                user = user,
+                                onEditClick = { showEditDialog = true }
+                            )
+                        }
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(24.dp))
+                
+                // Settings Categories
+                SettingsSection(
+                    title = "Account",
+                    items = listOf(
                     SettingsItem(
                         icon = Icons.Default.Person,
                         title = "Edit Profile",
@@ -432,9 +435,10 @@ fun SettingsScreen(
                     .fillMaxWidth()
                     .padding(bottom = 24.dp),
                 style = MaterialTheme.typography.bodySmall,
-                color = TextSecondary,
+                color = Color.White.copy(alpha = 0.6f),
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
+            }
         }
     }
     
@@ -454,8 +458,8 @@ fun SettingsScreen(
     if (showLogoutDialog) {
         AlertDialog(
             onDismissRequest = { showLogoutDialog = false },
-            title = { Text("Logout") },
-            text = { Text("Are you sure you want to logout?") },
+            title = { Text("Logout", color = Color.White) },
+            text = { Text("Are you sure you want to logout?", color = Color.White) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -471,43 +475,72 @@ fun SettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showLogoutDialog = false }) {
-                    Text("Cancel")
+                    Text("Cancel", color = Color.White)
                 }
+            },
+            containerColor = Color(0xFF1A1F2E).copy(alpha = 0.95f)
+        )
+    }
+    
+    // Edit Profile Dialog
+    if (showEditDialog && currentUser != null) {
+        EditProfileDialog(
+            user = currentUser!!,
+            onDismiss = { showEditDialog = false },
+            onSave = { name, about ->
+                // TODO: Update profile
+                showEditDialog = false
             }
+        )
+    }
+    
+    // Logout Confirmation Dialog
+    if (showLogoutDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutDialog = false },
+            title = { Text("Logout", color = Color.White) },
+            text = { Text("Are you sure you want to logout?", color = Color.White) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        authViewModel.signOut()
+                        showLogoutDialog = false
+                        navController.navigate(Screen.EmailAuth.route) {
+                            popUpTo(Screen.Home.route) { inclusive = true }
+                        }
+                    }
+                ) {
+                    Text("Logout", color = SecondaryPink)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogoutDialog = false }) {
+                    Text("Cancel", color = Color.White)
+                }
+            },
+            containerColor = Color(0xFF1A1F2E).copy(alpha = 0.95f)
         )
     }
 }
 
 @Composable
 fun ProfileSection(user: User, onEditClick: () -> Unit) {
-    Card(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = Color.White
-        ),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = 4.dp
-        )
+            .padding(20.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Profile Picture
+        // 💎 Glass Profile Picture with pulsating effect
+        PulsatingEffect(durationMillis = 2000) {
             Box(
                 modifier = Modifier
                     .size(80.dp)
                     .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.2f))
                     .border(
                         width = 3.dp,
-                        brush = Brush.horizontalGradient(
-                            colors = listOf(PrimaryPurple, PrimaryBlue)
-                        ),
+                        color = NeonGreen,
                         shape = CircleShape
                     )
             ) {
@@ -518,43 +551,39 @@ fun ProfileSection(user: User, onEditClick: () -> Unit) {
                     contentScale = ContentScale.Crop
                 )
             }
-            
-            Spacer(modifier = Modifier.width(16.dp))
-            
-            // User Info
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = user.name,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = user.about,
-                    fontSize = 14.sp,
-                    color = TextSecondary
-                )
-            }
-            
-            // Edit Button
-            IconButton(
-                onClick = onEditClick,
-                modifier = Modifier
-                    .size(48.dp)
-                    .background(
-                        brush = Brush.horizontalGradient(
-                            colors = listOf(PrimaryPurple, PrimaryBlue)
-                        ),
-                        shape = CircleShape
-                    )
-            ) {
-                Icon(
-                    Icons.Default.Edit,
-                    contentDescription = "Edit",
-                    tint = Color.White
-                )
-            }
+        }
+        
+        Spacer(modifier = Modifier.width(16.dp))
+        
+        // User Info
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = user.name,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = user.about,
+                fontSize = 14.sp,
+                color = Color.White.copy(alpha = 0.7f)
+            )
+        }
+        
+        // 💎 Glass Edit Button
+        IconButton(
+            onClick = onEditClick,
+            modifier = Modifier
+                .size(48.dp)
+                .clip(CircleShape)
+                .background(NeonGreen.copy(alpha = 0.8f))
+        ) {
+            Icon(
+                Icons.Default.Edit,
+                contentDescription = "Edit",
+                tint = Color.White
+            )
         }
     }
 }
@@ -564,33 +593,31 @@ fun SettingsSection(title: String, items: List<SettingsItem>) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = 0.dp)
     ) {
         Text(
             text = title,
             fontSize = 16.sp,
             fontWeight = FontWeight.Bold,
-            color = PrimaryPurple,
+            color = Color.White,
             modifier = Modifier.padding(bottom = 12.dp, start = 8.dp)
         )
         
-        Card(
+        // 💎 Glass Card for settings items
+        GlassCard(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = Color.White
-            ),
-            elevation = CardDefaults.cardElevation(
-                defaultElevation = 2.dp
-            )
+            gradient = GlassColors.OceanGradient
         ) {
-            items.forEachIndexed { index, item ->
-                SettingsItemRow(item)
-                if (index < items.size - 1) {
-                    HorizontalDivider(
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        color = DividerColor.copy(alpha = 0.3f)
-                    )
+            Column {
+                items.forEachIndexed { index, item ->
+                    SettingsItemRow(item)
+                    if (index < items.size - 1) {
+                        Divider(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = Color.White.copy(alpha = 0.2f),
+                            thickness = 1.dp
+                        )
+                    }
                 }
             }
         }
@@ -606,19 +633,18 @@ fun SettingsItemRow(item: SettingsItem) {
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // 💎 Glass icon container
         Box(
             modifier = Modifier
                 .size(40.dp)
-                .background(
-                    color = PrimaryPurple.copy(alpha = 0.1f),
-                    shape = RoundedCornerShape(10.dp)
-                ),
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color.White.copy(alpha = 0.2f)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = item.icon,
                 contentDescription = item.title,
-                tint = PrimaryPurple,
+                tint = Color.White,
                 modifier = Modifier.size(24.dp)
             )
         }
@@ -630,19 +656,19 @@ fun SettingsItemRow(item: SettingsItem) {
                 text = item.title,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Medium,
-                color = TextPrimary
+                color = Color.White
             )
             Text(
                 text = item.subtitle,
                 fontSize = 14.sp,
-                color = TextSecondary
+                color = Color.White.copy(alpha = 0.7f)
             )
         }
         
         Icon(
             Icons.Default.ChevronRight,
             contentDescription = "Navigate",
-            tint = TextSecondary
+            tint = Color.White.copy(alpha = 0.7f)
         )
     }
 }

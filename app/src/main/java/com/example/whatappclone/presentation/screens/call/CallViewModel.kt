@@ -59,20 +59,24 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     fun loadCallAsCaller(callId: String, isVideoCall: Boolean) {
         viewModelScope.launch {
             try {
+                Log.d("CallViewModel", "Loading call as caller: $callId")
+                
+                // Start timeout immediately for caller
+                startTimeoutTimer(callId)
+                
                 // Listen for call updates
                 callRepository.listenForCallUpdates(callId).collect { call ->
                     _callState.value = call
+                    Log.d("CallViewModel", "Call update received: ${call?.callStatus}")
                     
                     when (call?.callStatus) {
                         CallStatus.RINGING -> {
                             // Play ringback tone for caller
                             ringtoneManager.playOutgoingRingtone()
-                            
-                            // Start timeout timer (30 seconds)
-                            startTimeoutTimer(callId)
                         }
                         
                         CallStatus.ANSWERED -> {
+                            Log.d("CallViewModel", "Call answered! Stopping timeout and ringtone")
                             ringtoneManager.stopRingtone()
                             ringtoneManager.playCallConnectedSound()
                             _isConnecting.value = true
@@ -80,8 +84,8 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
                             // Cancel timeout
                             timeoutJob?.cancel()
                             
-                            // Initialize WebRTC connection
-                            initializeWebRTCConnection(callId, isVideoCall)
+                            // Initialize WebRTC connection as CALLER
+                            initializeWebRTCConnection(callId, isVideoCall, isCaller = true)
                         }
                         
                         CallStatus.CONNECTED -> {
@@ -93,7 +97,9 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
                         }
                         
                         CallStatus.REJECTED, CallStatus.MISSED, CallStatus.ENDED -> {
+                            Log.d("CallViewModel", "Call ended with status: ${call.callStatus}")
                             ringtoneManager.stopRingtone()
+                            timeoutJob?.cancel()
                             cleanupCall()
                         }
                         
@@ -125,8 +131,8 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
                 
                 _isConnecting.value = true
                 
-                // Initialize WebRTC connection
-                initializeWebRTCConnection(callId, isVideoCall)
+                // Initialize WebRTC connection as RECEIVER
+                initializeWebRTCConnection(callId, isVideoCall, isCaller = false)
                 
                 // Listen for updates
                 callRepository.listenForCallUpdates(callId).collect { updatedCall ->
@@ -158,9 +164,11 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * Initialize WebRTC peer connection
      */
-    private fun initializeWebRTCConnection(callId: String, isVideoCall: Boolean) {
+    private fun initializeWebRTCConnection(callId: String, isVideoCall: Boolean, isCaller: Boolean) {
         viewModelScope.launch {
             try {
+                Log.d("CallViewModel", "Initializing WebRTC - callId: $callId, isCaller: $isCaller")
+                
                 webRTCManager.createPeerConnection(
                     callId = callId,
                     isVideoCall = isVideoCall,
@@ -175,19 +183,21 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 
                 // Create and send offer (caller) or answer (receiver)
-                val call = _callState.value
-                if (call?.callStatus == CallStatus.RINGING) {
+                if (isCaller) {
                     // Caller creates offer
+                    Log.d("CallViewModel", "Caller: Creating SDP offer...")
                     webRTCManager.createOffer(callId) { offer ->
                         viewModelScope.launch {
+                            Log.d("CallViewModel", "Caller: Sending SDP offer")
                             callRepository.sendSignalingData(callId, "offer", offer)
                         }
                     }
                     
                     // Listen for answer
                     listenForAnswer(callId)
-                } else if (call?.callStatus == CallStatus.ANSWERED) {
+                } else {
                     // Receiver listens for offer then creates answer
+                    Log.d("CallViewModel", "Receiver: Waiting for SDP offer...")
                     listenForOffer(callId)
                 }
                 
@@ -277,13 +287,21 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
      * Start 30-second timeout timer
      */
     private fun startTimeoutTimer(callId: String) {
+        Log.d("CallViewModel", "Starting 30s timeout timer for call: $callId")
+        timeoutJob?.cancel() // Cancel any existing timeout
+        
         timeoutJob = viewModelScope.launch {
             delay(ImprovedCallRepository.CALL_TIMEOUT_MS)
             
+            Log.d("CallViewModel", "Call timeout reached! Ending call: $callId")
             // Call not answered, mark as missed
             callRepository.handleCallTimeout(callId)
             ringtoneManager.stopRingtone()
             _errorMessage.value = "No answer"
+            
+            // Auto-close after 2 seconds
+            delay(2000)
+            cleanupCall()
         }
     }
     

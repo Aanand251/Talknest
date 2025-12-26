@@ -131,13 +131,19 @@ fun NavGraph(
         composable(
             route = Screen.Call.route,
             arguments = listOf(
-                navArgument("callId") { type = NavType.StringType }
+                navArgument("callId") { type = NavType.StringType },
+                navArgument("isIncoming") { 
+                    type = NavType.BoolType
+                    defaultValue = false
+                }
             )
         ) { backStackEntry ->
             val callId = backStackEntry.arguments?.getString("callId") ?: ""
+            val isIncoming = backStackEntry.arguments?.getBoolean("isIncoming") ?: false
             com.example.whatappclone.presentation.screens.call.CallScreen(
                 navController = navController,
-                callId = callId
+                callId = callId,
+                isIncoming = isIncoming
             )
         }
     }

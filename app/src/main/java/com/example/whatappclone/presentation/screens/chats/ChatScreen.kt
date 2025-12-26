@@ -10,6 +10,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -62,6 +63,113 @@ fun ChatScreen(
     val authRepository = remember { AuthRepository() }
     val presenceManager = remember { PresenceManager(context) }
     
+    // 🎯 Permission launcher for call permissions
+    var permissionsGranted by remember { mutableStateOf(false) }
+    var pendingCallType by remember { mutableStateOf<com.example.whatappclone.data.model.CallType?>(null) }
+    
+    val callPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val allGranted = permissions.values.all { it }
+        permissionsGranted = allGranted
+        
+        if (allGranted) {
+            android.util.Log.d("ChatScreen", "Call permissions granted!")
+            // Proceed with pending call
+            pendingCallType?.let { callType ->
+                scope.launch {
+                    try {
+                        android.util.Log.d("ChatScreen", "Initiating ${callType.name} call to: $otherUserId")
+                        val callRepository = com.example.whatappclone.data.repository.ImprovedCallRepository(context)
+                        
+                        val result = callRepository.initiateCall(
+                            receiverId = otherUserId,
+                            receiverName = otherUser?.name ?: "Unknown",
+                            receiverImage = otherUser?.profileImageUrl ?: "",
+                            callType = callType
+                        )
+                        
+                        result.onSuccess { (callId, isReceiverOnline) ->
+                            android.util.Log.d("ChatScreen", "Call initiated! CallId: $callId, Receiver online: $isReceiverOnline")
+                            // 🎯 Navigate to call screen regardless of receiver online status for testing
+                            navController.navigate(com.example.whatappclone.presentation.navigation.Screen.Call.createRoute(callId))
+                            
+                            if (!isReceiverOnline) {
+                                android.util.Log.w("ChatScreen", "Receiver is offline - call will ring until they come online")
+                            }
+                        }
+                        result.onFailure { e ->
+                            android.util.Log.e("ChatScreen", "Failed to initiate call", e)
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("ChatScreen", "Exception initiating call", e)
+                    }
+                }
+                pendingCallType = null
+            }
+        } else {
+            android.util.Log.e("ChatScreen", "Call permissions DENIED!")
+            pendingCallType = null
+        }
+    }
+    
+    // Helper function to request permissions and initiate call
+    fun initiateCallWithPermissions(callType: com.example.whatappclone.data.model.CallType) {
+        val requiredPermissions = if (callType == com.example.whatappclone.data.model.CallType.VIDEO) {
+            arrayOf(
+                android.Manifest.permission.CAMERA,
+                android.Manifest.permission.RECORD_AUDIO
+            )
+        } else {
+            arrayOf(android.Manifest.permission.RECORD_AUDIO)
+        }
+        
+        // Check if permissions are already granted
+        val allPermissionsGranted = requiredPermissions.all { permission ->
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                context,
+                permission
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+        
+        if (allPermissionsGranted) {
+            android.util.Log.d("ChatScreen", "Permissions already granted, initiating call")
+            // Permissions already granted, initiate call directly
+            scope.launch {
+                try {
+                    val callRepository = com.example.whatappclone.data.repository.ImprovedCallRepository(context)
+                    
+                    val result = callRepository.initiateCall(
+                        receiverId = otherUserId,
+                        receiverName = otherUser?.name ?: "Unknown",
+                        receiverImage = otherUser?.profileImageUrl ?: "",
+                        callType = callType
+                    )
+                    
+                    result.onSuccess { (callId, isReceiverOnline) ->
+                        android.util.Log.d("ChatScreen", "Call initiated! CallId: $callId, Receiver online: $isReceiverOnline")
+                        // 🎯 Navigate to call screen regardless of receiver online status for testing
+                        navController.navigate(com.example.whatappclone.presentation.navigation.Screen.Call.createRoute(callId))
+                        
+                        if (!isReceiverOnline) {
+                            android.util.Log.w("ChatScreen", "Receiver is offline - call will ring until they come online")
+                        }
+                    }
+                    result.onFailure { e ->
+                        android.util.Log.e("ChatScreen", "Failed to initiate call", e)
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("ChatScreen", "Exception initiating call", e)
+                }
+            }
+        } else {
+            android.util.Log.d("ChatScreen", "Requesting permissions for ${callType.name} call")
+            // Request permissions
+            pendingCallType = callType
+            callPermissionLauncher.launch(requiredPermissions)
+        }
+    }
+    
     // Image picker
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -112,133 +220,61 @@ fun ChatScreen(
         }
     }
     
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            text = otherUser?.name ?: "Chat",
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            fontSize = 18.sp
-                        )
-                        Text(
-                            text = if (isOnline) "Online" else "Last seen ${DateTimeUtil.getLastSeenTime(lastSeen)}",
-                            color = Color.White.copy(alpha = 0.8f),
-                            fontSize = 12.sp
-                        )
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.White)
-                    }
-                },
+    // 💎 Glass Background with Ocean gradient
+    GradientBackground(gradient = GlassColors.OceanGradient) {
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text(
+                                text = otherUser?.name ?: "Chat",
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                fontSize = 18.sp
+                            )
+                            Text(
+                                text = if (isOnline) "Online" else "Last seen ${DateTimeUtil.getLastSeenTime(lastSeen)}",
+                                color = NeonGreen,
+                                fontSize = 12.sp,
+                                fontWeight = if (isOnline) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.White)
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent
+                    ),
                 actions = {
-                    val contextForCall = LocalContext.current
-                    
+                    // 🎯 Video Call Button
                     IconButton(
                         onClick = { 
-                            try {
-                                android.util.Log.d("ChatScreen", "Video call button clicked!")
-                                android.util.Log.d("ChatScreen", "Other user ID: $otherUserId")
-                                android.util.Log.d("ChatScreen", "Context: $contextForCall")
-                                
-                                scope.launch {
-                                    try {
-                                        android.util.Log.d("ChatScreen", "Inside coroutine - Initiating video call to: $otherUserId")
-                                        val callRepository = com.example.whatappclone.data.repository.ImprovedCallRepository(contextForCall)
-                                        android.util.Log.d("ChatScreen", "CallRepository created")
-                                        
-                                        val result = callRepository.initiateCall(
-                                            receiverId = otherUserId,
-                                            receiverName = otherUser?.name ?: "Unknown",
-                                            receiverImage = otherUser?.profileImageUrl ?: "",
-                                            callType = com.example.whatappclone.data.model.CallType.VIDEO
-                                        )
-                                        
-                                        android.util.Log.d("ChatScreen", "initiateCall returned")
-                                        
-                                        result.onSuccess { (callId, isReceiverOnline) ->
-                                            android.util.Log.d("ChatScreen", "SUCCESS! CallId: $callId, Receiver online: $isReceiverOnline")
-                                            if (!isReceiverOnline) {
-                                                android.util.Log.d("ChatScreen", "Receiver is offline!")
-                                            } else {
-                                                android.util.Log.d("ChatScreen", "Navigating to call screen...")
-                                                navController.navigate(com.example.whatappclone.presentation.navigation.Screen.Call.createRoute(callId))
-                                            }
-                                        }
-                                        result.onFailure { e ->
-                                            android.util.Log.e("ChatScreen", "FAILED to initiate call", e)
-                                        }
-                                    } catch (e: Exception) {
-                                        android.util.Log.e("ChatScreen", "Exception in coroutine", e)
-                                    }
-                                }
-                            } catch (e: Exception) {
-                                android.util.Log.e("ChatScreen", "Exception in onClick", e)
-                            }
+                            android.util.Log.d("ChatScreen", "Video call button clicked!")
+                            initiateCallWithPermissions(com.example.whatappclone.data.model.CallType.VIDEO)
                         }
                     ) {
                         Icon(Icons.Default.Videocam, "Video Call", tint = Color.White)
                     }
+                    
+                    // 🎯 Voice Call Button
                     IconButton(
                         onClick = { 
-                            try {
-                                android.util.Log.d("ChatScreen", "Voice call button clicked!")
-                                android.util.Log.d("ChatScreen", "Other user ID: $otherUserId")
-                                
-                                scope.launch {
-                                    try {
-                                        android.util.Log.d("ChatScreen", "Inside coroutine - Initiating voice call to: $otherUserId")
-                                        val callRepository = com.example.whatappclone.data.repository.ImprovedCallRepository(contextForCall)
-                                        android.util.Log.d("ChatScreen", "CallRepository created")
-                                        
-                                        val result = callRepository.initiateCall(
-                                            receiverId = otherUserId,
-                                            receiverName = otherUser?.name ?: "Unknown",
-                                            receiverImage = otherUser?.profileImageUrl ?: "",
-                                            callType = com.example.whatappclone.data.model.CallType.AUDIO
-                                        )
-                                        
-                                        android.util.Log.d("ChatScreen", "initiateCall returned")
-                                        
-                                        result.onSuccess { (callId, isReceiverOnline) ->
-                                            android.util.Log.d("ChatScreen", "SUCCESS! CallId: $callId, Receiver online: $isReceiverOnline")
-                                            if (!isReceiverOnline) {
-                                                android.util.Log.d("ChatScreen", "Receiver is offline!")
-                                            } else {
-                                                android.util.Log.d("ChatScreen", "Navigating to call screen...")
-                                                navController.navigate(com.example.whatappclone.presentation.navigation.Screen.Call.createRoute(callId))
-                                            }
-                                        }
-                                        result.onFailure { e ->
-                                            android.util.Log.e("ChatScreen", "FAILED to initiate call", e)
-                                        }
-                                    } catch (e: Exception) {
-                                        android.util.Log.e("ChatScreen", "Exception in coroutine", e)
-                                    }
-                                }
-                            } catch (e: Exception) {
-                                android.util.Log.e("ChatScreen", "Exception in onClick", e)
-                            }
+                            android.util.Log.d("ChatScreen", "Voice call button clicked!")
+                            initiateCallWithPermissions(com.example.whatappclone.data.model.CallType.AUDIO)
                         }
                     ) {
                         Icon(Icons.Default.Call, "Voice Call", tint = Color.White)
                     }
+                    
                     IconButton(onClick = { /* TODO: More options */ }) {
                         Icon(Icons.Default.MoreVert, "More", tint = Color.White)
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent
-                ),
-                modifier = Modifier.background(
-                    Brush.horizontalGradient(
-                        colors = listOf(PrimaryPurple, PrimaryIndigo, PrimaryBlue)
-                    )
-                )
+                }
             )
         },
         bottomBar = {
@@ -296,36 +332,65 @@ fun ChatScreen(
                     }
                 }
                 
-                Row(
+                // 💎 Glass Message Input Field
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .clip(RoundedCornerShape(28.dp))
+                        .background(Color(0xFF1E3A5F).copy(alpha = 0.7f)) // Darker blue glass for visibility
                 ) {
-                    IconButton(onClick = { showAttachmentMenu = !showAttachmentMenu }) {
-                        Icon(Icons.Default.AttachFile, "Attach", tint = PrimaryPurple)
-                    }
-                    
-                    OutlinedTextField(
-                        value = messageText,
-                        onValueChange = { messageText = it },
-                        modifier = Modifier.weight(1f),
-                        placeholder = { Text("Type a message") }
-                    )
-                    
-                    Spacer(modifier = Modifier.width(8.dp))
-                    
-                    IconButton(
-                        onClick = {
-                            if (messageText.isNotBlank() && currentUserId != null) {
-                                scope.launch {
-                                    chatViewModel.sendTextMessage(chatId, otherUserId, messageText)
-                                    messageText = ""
-                                }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = { showAttachmentMenu = !showAttachmentMenu }) {
+                            Icon(Icons.Default.AttachFile, "Attach", tint = Color.White)
+                        }
+                        
+                        OutlinedTextField(
+                            value = messageText,
+                            onValueChange = { messageText = it },
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 48.dp),
+                            placeholder = { 
+                                Text("Type a message", color = Color.White.copy(alpha = 0.7f)) 
+                            },
+                            colors = TextFieldDefaults.colors(
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                focusedContainerColor = Color(0xFF2A4A6F).copy(alpha = 0.5f),
+                                unfocusedContainerColor = Color(0xFF2A4A6F).copy(alpha = 0.3f),
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent,
+                                cursorColor = NeonGreen
+                            ),
+                            shape = RoundedCornerShape(24.dp)
+                        )
+                        
+                        Spacer(modifier = Modifier.width(8.dp))
+                        
+                        // 💎 Pulsating Send Button
+                        PulsatingEffect(durationMillis = 1500) {
+                            IconButton(
+                                onClick = {
+                                    if (messageText.isNotBlank() && currentUserId != null) {
+                                        scope.launch {
+                                            chatViewModel.sendTextMessage(chatId, otherUserId, messageText)
+                                            messageText = ""
+                                        }
+                                    }
+                                },
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(CircleShape)
+                                    .background(NeonGreen)
+                            ) {
+                                Icon(Icons.Default.Send, "Send", tint = Color.Black)
                             }
                         }
-                    ) {
-                        Icon(Icons.Default.Send, "Send", tint = PrimaryPurple)
                     }
                 }
             }
@@ -351,6 +416,7 @@ fun ChatScreen(
                 Spacer(modifier = Modifier.height(8.dp))
             }
         }
+        }
     }
 }
 
@@ -364,117 +430,156 @@ fun MessageBubble(
     val context = LocalContext.current
     var showDownloadOption by remember { mutableStateOf(false) }
     
+    // 💎 Animation for message appearance
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(50)
+        visible = true
+    }
+    
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isCurrentUser) Arrangement.End else Arrangement.Start
     ) {
-        Surface(
-            color = if (isCurrentUser) PrimaryPurple else Color.LightGray,
-            shape = MaterialTheme.shapes.medium,
-            modifier = Modifier
-                .widthIn(max = 280.dp)
-                .combinedClickable(
-                    onClick = { },
-                    onLongClick = {
-                        if (message.type != MessageType.TEXT && !message.mediaUrl.isNullOrEmpty()) {
-                            showDownloadOption = true
-                        }
-                    }
-                )
-        ) {
-            Column(modifier = Modifier.padding(12.dp)) {
-                when (message.type) {
-                    MessageType.TEXT -> {
-                        Text(
-                            text = message.text,
-                            color = if (isCurrentUser) Color.White else Color.Black
-                        )
-                    }
-                    MessageType.IMAGE -> {
-                        message.mediaUrl?.let { url ->
-                            Image(
-                                painter = rememberAsyncImagePainter(url),
-                                contentDescription = "Image",
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(max = 300.dp)
-                                    .clip(RoundedCornerShape(8.dp)),
-                                contentScale = ContentScale.Crop
+        ScaleInAnimation(visible = visible, durationMillis = 300) {
+            // 💎 Smaller, more visible message bubbles
+            Box(
+                modifier = Modifier
+                    .widthIn(max = 260.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(
+                        if (isCurrentUser) {
+                            // Sent messages - Brighter green with solid background
+                            Brush.horizontalGradient(
+                                colors = listOf(
+                                    Color(0xFF00C853), // Bright green
+                                    Color(0xFF00E676)  // Lighter green
+                                )
                             )
-                            if (message.text.isNotEmpty()) {
-                                Spacer(modifier = Modifier.height(4.dp))
+                        } else {
+                            // Received messages - Darker blue-gray for better contrast
+                            Brush.horizontalGradient(
+                                colors = listOf(
+                                    Color(0xFF2C3E50), // Dark blue-gray
+                                    Color(0xFF34495E)  // Slightly lighter
+                                )
+                            )
+                        }
+                    )
+                    .combinedClickable(
+                        onClick = { },
+                        onLongClick = {
+                            if (message.type != MessageType.TEXT && !message.mediaUrl.isNullOrEmpty()) {
+                                showDownloadOption = true
+                            }
+                        }
+                    )
+            ) {
+                Column(modifier = Modifier.padding(10.dp)) {
+                    when (message.type) {
+                        MessageType.TEXT -> {
+                            Text(
+                                text = message.text,
+                                color = if (isCurrentUser) Color.Black else Color.White,
+                                fontSize = 15.sp
+                            )
+                        }
+                        MessageType.IMAGE -> {
+                            message.mediaUrl?.let { url ->
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color.Black.copy(alpha = 0.2f))
+                                ) {
+                                    Image(
+                                        painter = rememberAsyncImagePainter(url),
+                                        contentDescription = "Image",
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(max = 300.dp),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                }
+                                if (message.text.isNotEmpty()) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = message.text,
+                                        color = if (isCurrentUser) Color.Black else Color.White,
+                                        fontSize = 15.sp
+                                    )
+                                }
+                            }
+                        }
+                        MessageType.VIDEO -> {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.PlayCircle,
+                                    "Video",
+                                    tint = if (isCurrentUser) Color.Black else Color.White
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = message.text,
-                                    color = if (isCurrentUser) Color.White else Color.Black
+                                    text = "Video",
+                                    color = if (isCurrentUser) Color.Black else Color.White,
+                                    fontSize = 15.sp
                                 )
                             }
                         }
-                    }
-                    MessageType.VIDEO -> {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.PlayCircle,
-                                "Video",
-                                tint = if (isCurrentUser) Color.White else Color.Black
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
+                        MessageType.DOCUMENT -> {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.Description,
+                                    "Document",
+                                    tint = if (isCurrentUser) Color.Black else Color.White
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = message.text.ifEmpty { "Document" },
+                                    color = if (isCurrentUser) Color.Black else Color.White,
+                                    fontSize = 15.sp
+                                )
+                            }
+                        }
+                        else -> {
                             Text(
-                                text = "Video",
-                                color = if (isCurrentUser) Color.White else Color.Black
+                                text = message.text,
+                                color = if (isCurrentUser) Color.Black else Color.White,
+                                fontSize = 15.sp
                             )
                         }
                     }
-                    MessageType.DOCUMENT -> {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.Description,
-                                "Document",
-                                tint = if (isCurrentUser) Color.White else Color.Black
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = message.text.ifEmpty { "Document" },
-                                color = if (isCurrentUser) Color.White else Color.Black
-                            )
-                        }
-                    }
-                    else -> {
-                        Text(
-                            text = message.text,
-                            color = if (isCurrentUser) Color.White else Color.Black
-                        )
-                    }
-                }
-                
-                Spacer(modifier = Modifier.height(4.dp))
-                
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = DateTimeUtil.getMessageTime(message.timestamp),
-                        fontSize = 10.sp,
-                        color = if (isCurrentUser) Color.White.copy(alpha = 0.7f) else Color.Gray
-                    )
                     
-                    if (isCurrentUser) {
-                        Icon(
-                            imageVector = when (message.status) {
-                                MessageStatus.SENT -> Icons.Default.Check
-                                MessageStatus.DELIVERED -> Icons.Default.DoneAll
-                                MessageStatus.SEEN -> Icons.Default.DoneAll
-                                else -> Icons.Default.Schedule
-                            },
-                            contentDescription = "Status",
-                            tint = if (message.status == MessageStatus.SEEN) {
-                                Color.Cyan
-                            } else {
-                                Color.White.copy(alpha = 0.7f)
-                            },
-                            modifier = Modifier.size(16.dp)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = DateTimeUtil.getMessageTime(message.timestamp),
+                            fontSize = 10.sp,
+                            color = if (isCurrentUser) Color.Black.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.7f)
                         )
+                        
+                        if (isCurrentUser) {
+                            Icon(
+                                imageVector = when (message.status) {
+                                    MessageStatus.SENT -> Icons.Default.Check
+                                    MessageStatus.DELIVERED -> Icons.Default.DoneAll
+                                    MessageStatus.SEEN -> Icons.Default.DoneAll
+                                    else -> Icons.Default.Schedule
+                                },
+                                contentDescription = "Status",
+                                tint = if (message.status == MessageStatus.SEEN) {
+                                    Color(0xFF00BCD4) // Bright cyan for seen
+                                } else {
+                                    Color.Black.copy(alpha = 0.7f)
+                                },
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -484,8 +589,8 @@ fun MessageBubble(
     if (showDownloadOption) {
         AlertDialog(
             onDismissRequest = { showDownloadOption = false },
-            title = { Text("Download") },
-            text = { Text("Do you want to download this ${message.type.name.lowercase()}?") },
+            title = { Text("Download", color = Color.White) },
+            text = { Text("Do you want to download this ${message.type.name.lowercase()}?", color = Color.White) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -493,14 +598,15 @@ fun MessageBubble(
                         showDownloadOption = false
                     }
                 ) {
-                    Text("Download")
+                    Text("Download", color = Color.White)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDownloadOption = false }) {
-                    Text("Cancel")
+                    Text("Cancel", color = Color.White)
                 }
-            }
+            },
+            containerColor = Color(0xFF1A1F2E).copy(alpha = 0.95f)
         )
     }
 }
