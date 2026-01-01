@@ -1,6 +1,8 @@
 package com.example.whatappclone.presentation.screens.call
 
 import android.app.Application
+import android.content.Context
+import android.media.AudioManager
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -23,6 +25,7 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     private val callRepository = ImprovedCallRepository(application)
     private val webRTCManager = WebRTCManager(application)
     private val ringtoneManager = CallRingtoneManager(application)
+    private val audioManager = application.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     
     private val _callState = MutableStateFlow<Call?>(null)
     val callState: StateFlow<Call?> = _callState
@@ -167,17 +170,22 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     private fun initializeWebRTCConnection(callId: String, isVideoCall: Boolean, isCaller: Boolean) {
         viewModelScope.launch {
             try {
-                Log.d("CallViewModel", "Initializing WebRTC - callId: $callId, isCaller: $isCaller")
+                Log.d("CallViewModel", "🚀 Initializing WebRTC - callId: $callId, isCaller: $isCaller, isVideo: $isVideoCall")
+                
+                // Configure audio for call BEFORE creating peer connection
+                configureAudioForCall(isVideoCall)
                 
                 webRTCManager.createPeerConnection(
                     callId = callId,
                     isVideoCall = isVideoCall,
                     onIceCandidate = { candidate ->
                         // Send ICE candidate to other peer via Firebase
+                        Log.d("CallViewModel", "🧊 Local ICE candidate generated")
                         sendIceCandidate(callId, candidate)
                     },
                     onAddStream = { mediaStream ->
                         // Handle remote stream (display video/audio)
+                        Log.d("CallViewModel", "📺 Remote stream received with ${mediaStream.audioTracks?.size ?: 0} audio, ${mediaStream.videoTracks?.size ?: 0} video tracks")
                         handleRemoteStream(mediaStream)
                     }
                 )
@@ -185,10 +193,10 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
                 // Create and send offer (caller) or answer (receiver)
                 if (isCaller) {
                     // Caller creates offer
-                    Log.d("CallViewModel", "Caller: Creating SDP offer...")
+                    Log.d("CallViewModel", "📤 Caller: Creating SDP offer...")
                     webRTCManager.createOffer(callId) { offer ->
                         viewModelScope.launch {
-                            Log.d("CallViewModel", "Caller: Sending SDP offer")
+                            Log.d("CallViewModel", "📤 Caller: Sending SDP offer (${offer.length} chars)")
                             callRepository.sendSignalingData(callId, "offer", offer)
                         }
                     }
@@ -197,7 +205,7 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
                     listenForAnswer(callId)
                 } else {
                     // Receiver listens for offer then creates answer
-                    Log.d("CallViewModel", "Receiver: Waiting for SDP offer...")
+                    Log.d("CallViewModel", "📥 Receiver: Waiting for SDP offer...")
                     listenForOffer(callId)
                 }
                 
@@ -205,11 +213,11 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
                 listenForIceCandidates(callId)
                 
                 // Mark as connected after WebRTC setup
-                delay(2000) // Give time for ICE gathering
+                delay(3000) // Give time for ICE gathering and connection
                 callRepository.updateCallStatus(callId, CallStatus.CONNECTED)
                 
             } catch (e: Exception) {
-                Log.e("CallViewModel", "Error initializing WebRTC", e)
+                Log.e("CallViewModel", "❌ Error initializing WebRTC", e)
                 _errorMessage.value = "Connection failed: ${e.message}"
             }
         }
@@ -220,13 +228,17 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
      */
     private fun listenForOffer(callId: String) {
         viewModelScope.launch {
+            Log.d("CallViewModel", "📥 Started listening for SDP offer...")
             callRepository.listenForSignalingData(callId, "offer").collect { offer ->
                 offer?.let {
+                    Log.d("CallViewModel", "📥 Received SDP offer (${it.length} chars), setting remote description...")
                     webRTCManager.setRemoteOffer(it)
                     
                     // Create and send answer
+                    Log.d("CallViewModel", "📤 Creating SDP answer...")
                     webRTCManager.createAnswer(callId) { answer ->
                         viewModelScope.launch {
+                            Log.d("CallViewModel", "📤 Sending SDP answer (${answer.length} chars)")
                             callRepository.sendSignalingData(callId, "answer", answer)
                         }
                     }
@@ -240,8 +252,10 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
      */
     private fun listenForAnswer(callId: String) {
         viewModelScope.launch {
+            Log.d("CallViewModel", "📥 Started listening for SDP answer...")
             callRepository.listenForSignalingData(callId, "answer").collect { answer ->
                 answer?.let {
+                    Log.d("CallViewModel", "📥 Received SDP answer (${it.length} chars), setting remote description...")
                     webRTCManager.setRemoteAnswer(it)
                 }
             }
@@ -254,22 +268,26 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     private fun sendIceCandidate(callId: String, candidate: IceCandidate) {
         viewModelScope.launch {
             val candidateData = "${candidate.sdp}|${candidate.sdpMLineIndex}|${candidate.sdpMid}"
+            Log.d("CallViewModel", "Sending ICE candidate: ${candidate.sdpMid}")
             callRepository.sendSignalingData(callId, "ice_candidate", candidateData)
         }
     }
     
     /**
-     * Listen for ICE candidates
+     * Listen for ICE candidates - using new method that handles multiple candidates
      */
     private fun listenForIceCandidates(callId: String) {
         viewModelScope.launch {
-            callRepository.listenForSignalingData(callId, "ice_candidate").collect { data ->
-                data?.let {
-                    val parts = it.split("|")
-                    if (parts.size == 3) {
+            callRepository.listenForIceCandidates(callId).collect { data ->
+                try {
+                    val parts = data.split("|")
+                    if (parts.size >= 3) {
                         val candidate = IceCandidate(parts[2], parts[1].toInt(), parts[0])
+                        Log.d("CallViewModel", "Adding remote ICE candidate: ${parts[2]}")
                         webRTCManager.addIceCandidate(candidate)
                     }
+                } catch (e: Exception) {
+                    Log.e("CallViewModel", "Error parsing ICE candidate", e)
                 }
             }
         }
@@ -333,7 +351,27 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun toggleSpeaker() {
         _isSpeakerOn.value = !_isSpeakerOn.value
-        // TODO: Implement audio routing to speaker/earpiece
+        audioManager.isSpeakerphoneOn = _isSpeakerOn.value
+        Log.d("CallViewModel", "Speaker toggled: ${_isSpeakerOn.value}")
+    }
+    
+    /**
+     * Configure audio for call
+     */
+    private fun configureAudioForCall(isVideoCall: Boolean) {
+        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+        audioManager.isSpeakerphoneOn = isVideoCall  // Speaker for video, earpiece for voice
+        _isSpeakerOn.value = isVideoCall
+        Log.d("CallViewModel", "Audio configured - mode: MODE_IN_COMMUNICATION, speaker: $isVideoCall")
+    }
+    
+    /**
+     * Restore audio settings
+     */
+    private fun restoreAudioSettings() {
+        audioManager.mode = AudioManager.MODE_NORMAL
+        audioManager.isSpeakerphoneOn = false
+        Log.d("CallViewModel", "Audio settings restored")
     }
     
     /**
@@ -375,6 +413,8 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
         timeoutJob?.cancel()
         webRTCManager.close()
         ringtoneManager.release()
+        restoreAudioSettings()  // Restore audio when call ends
+        Log.d("CallViewModel", "Call cleanup completed")
     }
     
     override fun onCleared() {

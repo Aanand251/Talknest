@@ -279,6 +279,7 @@ class WebRTCManager(private val context: Context) {
         callId: String,
         onOfferCreated: (String) -> Unit
     ) {
+        Log.d(TAG, "📤 Creating SDP offer for call: $callId")
         val constraints = MediaConstraints().apply {
             mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
             mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
@@ -287,12 +288,15 @@ class WebRTCManager(private val context: Context) {
         peerConnection?.createOffer(object : SdpObserver {
             override fun onCreateSuccess(sdp: SessionDescription?) {
                 sdp?.let {
+                    Log.d(TAG, "📤 SDP Offer created successfully (${it.description.length} chars)")
                     peerConnection?.setLocalDescription(object : SdpObserver {
                         override fun onSetSuccess() {
-                            // Send offer to Firebase
+                            Log.d(TAG, "📤 Local description set successfully")
                             onOfferCreated(it.description)
                         }
-                        override fun onSetFailure(error: String?) {}
+                        override fun onSetFailure(error: String?) {
+                            Log.e(TAG, "❌ Failed to set local description: $error")
+                        }
                         override fun onCreateSuccess(p0: SessionDescription?) {}
                         override fun onCreateFailure(p0: String?) {}
                     }, it)
@@ -300,7 +304,9 @@ class WebRTCManager(private val context: Context) {
             }
             
             override fun onSetSuccess() {}
-            override fun onCreateFailure(error: String?) {}
+            override fun onCreateFailure(error: String?) {
+                Log.e(TAG, "❌ Failed to create offer: $error")
+            }
             override fun onSetFailure(error: String?) {}
         }, constraints)
     }
@@ -312,6 +318,7 @@ class WebRTCManager(private val context: Context) {
         callId: String,
         onAnswerCreated: (String) -> Unit
     ) {
+        Log.d(TAG, "📤 Creating SDP answer for call: $callId")
         val constraints = MediaConstraints().apply {
             mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
             mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
@@ -320,12 +327,15 @@ class WebRTCManager(private val context: Context) {
         peerConnection?.createAnswer(object : SdpObserver {
             override fun onCreateSuccess(sdp: SessionDescription?) {
                 sdp?.let {
+                    Log.d(TAG, "📤 SDP Answer created successfully (${it.description.length} chars)")
                     peerConnection?.setLocalDescription(object : SdpObserver {
                         override fun onSetSuccess() {
-                            // Send answer to Firebase
+                            Log.d(TAG, "📤 Local description (answer) set successfully")
                             onAnswerCreated(it.description)
                         }
-                        override fun onSetFailure(error: String?) {}
+                        override fun onSetFailure(error: String?) {
+                            Log.e(TAG, "❌ Failed to set local description (answer): $error")
+                        }
                         override fun onCreateSuccess(p0: SessionDescription?) {}
                         override fun onCreateFailure(p0: String?) {}
                     }, it)
@@ -333,7 +343,9 @@ class WebRTCManager(private val context: Context) {
             }
             
             override fun onSetSuccess() {}
-            override fun onCreateFailure(error: String?) {}
+            override fun onCreateFailure(error: String?) {
+                Log.e(TAG, "❌ Failed to create answer: $error")
+            }
             override fun onSetFailure(error: String?) {}
         }, constraints)
     }
@@ -342,10 +354,15 @@ class WebRTCManager(private val context: Context) {
      * Set remote offer (receiver)
      */
     fun setRemoteOffer(offer: String) {
+        Log.d(TAG, "📥 Setting remote offer (${offer.length} chars)")
         val sessionDescription = SessionDescription(SessionDescription.Type.OFFER, offer)
         peerConnection?.setRemoteDescription(object : SdpObserver {
-            override fun onSetSuccess() {}
-            override fun onSetFailure(error: String?) {}
+            override fun onSetSuccess() {
+                Log.d(TAG, "✅ Remote offer set successfully")
+            }
+            override fun onSetFailure(error: String?) {
+                Log.e(TAG, "❌ Failed to set remote offer: $error")
+            }
             override fun onCreateSuccess(p0: SessionDescription?) {}
             override fun onCreateFailure(p0: String?) {}
         }, sessionDescription)
@@ -353,10 +370,15 @@ class WebRTCManager(private val context: Context) {
     
    
     fun setRemoteAnswer(answer: String) {
+        Log.d(TAG, "📥 Setting remote answer (${answer.length} chars)")
         val sessionDescription = SessionDescription(SessionDescription.Type.ANSWER, answer)
         peerConnection?.setRemoteDescription(object : SdpObserver {
-            override fun onSetSuccess() {}
-            override fun onSetFailure(error: String?) {}
+            override fun onSetSuccess() {
+                Log.d(TAG, "✅ Remote answer set successfully - Connection should be established!")
+            }
+            override fun onSetFailure(error: String?) {
+                Log.e(TAG, "❌ Failed to set remote answer: $error")
+            }
             override fun onCreateSuccess(p0: SessionDescription?) {}
             override fun onCreateFailure(p0: String?) {}
         }, sessionDescription)
@@ -366,7 +388,8 @@ class WebRTCManager(private val context: Context) {
      * Add ICE candidate
      */
     fun addIceCandidate(candidate: IceCandidate) {
-        peerConnection?.addIceCandidate(candidate)
+        val result = peerConnection?.addIceCandidate(candidate)
+        Log.d(TAG, "🧊 Adding remote ICE candidate: ${candidate.sdpMid}, result: $result")
     }
     
     /**
@@ -374,6 +397,7 @@ class WebRTCManager(private val context: Context) {
      */
     fun toggleMicrophone(enabled: Boolean) {
         localAudioTrack?.setEnabled(enabled)
+        Log.d(TAG, "🎤 Microphone toggled: $enabled")
     }
     
     /**
@@ -390,14 +414,9 @@ class WebRTCManager(private val context: Context) {
         (videoCapturer as? CameraVideoCapturer)?.switchCamera(null)
     }
     
-    /**
-     * Get local video track for preview
-     */
+   
     fun getLocalVideoTrack(): VideoTrack? = localVideoTrack
-    
-    /**
-     * Close connection and release resources
-     */
+
     fun close() {
         videoCapturer?.stopCapture()
         videoCapturer?.dispose()

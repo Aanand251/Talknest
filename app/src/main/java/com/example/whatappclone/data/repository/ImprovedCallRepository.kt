@@ -517,35 +517,69 @@ class ImprovedCallRepository(private val context: Context) {
         data: String
     ): Result<Unit> {
         return try {
-            val signalingData = mapOf(
-                "type" to type,
-                "data" to data,
-                "timestamp" to System.currentTimeMillis()
-            )
+            val currentUserId = auth.currentUser?.uid ?: return Result.failure(Exception("Not logged in"))
             
-            realtimeDb.reference
-                .child("signaling")
-                .child(callId)
-                .child(type)
-                .setValue(signalingData)
-                .await()
+            if (type == "ice_candidate") {
+                // ICE candidates need to be stored as array (multiple candidates)
+                val candidateId = UUID.randomUUID().toString()
+                val signalingData = mapOf(
+                    "type" to type,
+                    "data" to data,
+                    "senderId" to currentUserId,
+                    "timestamp" to System.currentTimeMillis()
+                )
+                
+                realtimeDb.reference
+                    .child("signaling")
+                    .child(callId)
+                    .child("${type}_${currentUserId}")  // Separate ICE candidates per user
+                    .child(candidateId)
+                    .setValue(signalingData)
+                    .await()
+                    
+                Log.d(TAG, "ICE Candidate sent: $candidateId from $currentUserId")
+            } else {
+                // Offer/Answer - single value
+                val signalingData = mapOf(
+                    "type" to type,
+                    "data" to data,
+                    "senderId" to currentUserId,
+                    "timestamp" to System.currentTimeMillis()
+                )
+                
+                realtimeDb.reference
+                    .child("signaling")
+                    .child(callId)
+                    .child(type)
+                    .setValue(signalingData)
+                    .await()
+                    
+                Log.d(TAG, "Signaling data sent: $type from $currentUserId, data length: ${data.length}")
+            }
             
-            Log.d(TAG, "Signaling data sent: $type")
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to send signaling data", e)
+            Log.e(TAG, "Failed to send signaling data: $type", e)
             Result.failure(e)
         }
     }
     
     /**
-     * Listen for signaling data
+     * Listen for signaling data (offer/answer)
      */
     fun listenForSignalingData(callId: String, type: String): Flow<String?> = callbackFlow {
+        val currentUserId = auth.currentUser?.uid ?: ""
+        
         val listener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val data = snapshot.child("data").getValue(String::class.java)
-                trySend(data)
+                val senderId = snapshot.child("senderId").getValue(String::class.java)
+                
+                // Only process if it's from the other user
+                if (data != null && senderId != currentUserId) {
+                    Log.d(TAG, "Received signaling data: $type from $senderId, data length: ${data.length}")
+                    trySend(data)
+                }
             }
             
             override fun onCancelled(error: DatabaseError) {
@@ -559,9 +593,63 @@ class ImprovedCallRepository(private val context: Context) {
             .child(type)
         
         ref.addValueEventListener(listener)
+        Log.d(TAG, "Started listening for: $type on callId: $callId")
         
         awaitClose {
             ref.removeEventListener(listener)
+            Log.d(TAG, "Stopped listening for: $type")
+        }
+    }
+    
+    /**
+     * Listen for ICE candidates from other user
+     */
+    fun listenForIceCandidates(callId: String): Flow<String> = callbackFlow {
+        val currentUserId = auth.currentUser?.uid ?: ""
+        val processedCandidates = mutableSetOf<String>()
+        
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                // Listen for ICE candidates from ALL other users (not current user)
+                for (userSnapshot in snapshot.children) {
+                    val key = userSnapshot.key ?: continue
+                    
+                    // Skip our own ICE candidates
+                    if (key.contains(currentUserId)) continue
+                    
+                    // Process each candidate from other users
+                    for (candidateSnapshot in userSnapshot.children) {
+                        val candidateId = candidateSnapshot.key ?: continue
+                        
+                        // Skip already processed candidates
+                        if (processedCandidates.contains(candidateId)) continue
+                        processedCandidates.add(candidateId)
+                        
+                        val data = candidateSnapshot.child("data").getValue(String::class.java)
+                        if (data != null) {
+                            Log.d(TAG, "Received ICE candidate from $key: $candidateId")
+                            trySend(data)
+                        }
+                    }
+                }
+            }
+            
+            override fun onCancelled(error: DatabaseError) {
+                Log.e(TAG, "Listen for ICE candidates cancelled", error.toException())
+            }
+        }
+        
+        // Listen for all ice_candidate_* children
+        val ref = realtimeDb.reference
+            .child("signaling")
+            .child(callId)
+        
+        ref.addValueEventListener(listener)
+        Log.d(TAG, "Started listening for ICE candidates on callId: $callId")
+        
+        awaitClose {
+            ref.removeEventListener(listener)
+            Log.d(TAG, "Stopped listening for ICE candidates")
         }
     }
 }
